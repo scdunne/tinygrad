@@ -3,6 +3,7 @@ env:
   # increment this when downloads substantially change to avoid the internet
   DOWNLOAD_CACHE_VERSION: '5'
   RUN_PROCESS_REPLAY: 1
+  PREPARE_PROCESS_REPLAY_UPLOAD: 1
 
 on:
   push:
@@ -313,6 +314,11 @@ jobs:
         export PR_TITLE=$(jq -r .pull_request.title "$GITHUB_EVENT_PATH")
         export COMMIT_MESSAGE=$(git show -s --format=%B ${{ github.event.pull_request.head.sha }})
         cp test/external/process_replay/process_replay.py ./process_replay.py && git fetch origin master && git -c advice.detachedHead=false checkout origin/master && PYTHONPATH=. python3 process_replay.py
+    - name: Upload process replay artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cache-metal.db
+        path: ~/Library/Caches/tinygrad/cache.db
 
 #  testwebgl:
 #    name: WebGL Tests
@@ -502,6 +508,11 @@ jobs:
           export PR_TITLE=$(jq -r .pull_request.title "$GITHUB_EVENT_PATH")
           export COMMIT_MESSAGE=$(git show -s --format=%B ${{ github.event.pull_request.head.sha }})
           cp test/external/process_replay/process_replay.py ./process_replay.py && git fetch origin master && git -c advice.detachedHead=false checkout origin/master && PYTHONPATH=. python3 process_replay.py
+      - name: Upload process replay artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-${{ matrix.backend }}.db
+          path: ~/.cache/tinygrad
 
   #testunicorn:
   #  name: ARM64 unicorn Test
