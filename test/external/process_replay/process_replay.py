@@ -4,8 +4,33 @@ import difflib, pickle, multiprocessing, os, json
 from typing import List, Tuple
 from urllib.request import Request
 from tinygrad.codegen.kernel import Kernel, OptOps
-from tinygrad.helpers import Context, ContextVar, colored, db_connection, VERSION, fetch, getenv, tqdm
+from tinygrad.helpers import Context, ContextVar, colored, db_connection, VERSION, getenv, tqdm, _cache_dir, CI
 from tinygrad.ops import LazyOp
+
+
+from typing import Union, Optional
+import urllib.request
+import pathlib, tempfile, hashlib
+def fetch(url:Union[str,urllib.request.Request], name:Optional[Union[pathlib.Path, str]]=None, subdir:Optional[str]=None,
+          allow_caching=not getenv("DISABLE_HTTP_CACHE")) -> pathlib.Path:
+  if isinstance(url, str) and url.startswith(("/", ".")): return pathlib.Path(url)
+  if name is not None and (isinstance(name, pathlib.Path) or '/' in name): fp = pathlib.Path(name)
+  else:
+    name = name if name is not None else url.full_url if isinstance(url, urllib.request.Request) else hashlib.md5(url.encode('utf-8')).hexdigest()
+    fp = pathlib.Path(_cache_dir) / "tinygrad" / "downloads" / (subdir or "") / name
+  if not fp.is_file() or not allow_caching:
+    with urllib.request.urlopen(url, timeout=10) as r:
+      assert r.status == 200
+      total_length = int(r.headers.get('content-length', 0))
+      progress_bar = tqdm(total=total_length, unit='B', unit_scale=True, desc=f"{url}", disable=CI)
+      (path := fp.parent).mkdir(parents=True, exist_ok=True)
+      with tempfile.NamedTemporaryFile(dir=path, delete=False) as f:
+        while chunk := r.read(16384): progress_bar.update(f.write(chunk))
+        f.close()
+        progress_bar.update(close=True)
+        if (file_size:=os.stat(f.name).st_size) < total_length: raise RuntimeError(f"fetch size incomplete, {file_size} < {total_length}")
+        pathlib.Path(f.name).rename(fp)
+  return fp
 
 page_size = 100
 table_name = f"process_replay_{getenv('GITHUB_RUN_ID', 'HEAD')}_{VERSION}"
