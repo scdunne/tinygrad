@@ -244,11 +244,13 @@ def diskcache(func):
 
 # *** http support ***
 
-def fetch(url:str, name:Optional[Union[pathlib.Path, str]]=None, subdir:Optional[str]=None,
+def fetch(url:Union[str,urllib.request.Request], name:Optional[Union[pathlib.Path, str]]=None, subdir:Optional[str]=None,
           allow_caching=not getenv("DISABLE_HTTP_CACHE")) -> pathlib.Path:
-  if url.startswith(("/", ".")): return pathlib.Path(url)
+  if isinstance(url, str) and url.startswith(("/", ".")): return pathlib.Path(url)
   if name is not None and (isinstance(name, pathlib.Path) or '/' in name): fp = pathlib.Path(name)
-  else: fp = pathlib.Path(_cache_dir) / "tinygrad" / "downloads" / (subdir or "") / (name or hashlib.md5(url.encode('utf-8')).hexdigest())
+  else:
+    name = name if name is not None else url.full_url if isinstance(url, urllib.request.Request) else hashlib.md5(url.encode('utf-8')).hexdigest()
+    fp = pathlib.Path(_cache_dir) / "tinygrad" / "downloads" / (subdir or "") / name
   if not fp.is_file() or not allow_caching:
     with urllib.request.urlopen(url, timeout=10) as r:
       assert r.status == 200

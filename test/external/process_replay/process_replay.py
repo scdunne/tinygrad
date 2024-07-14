@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # compare kernels created by HEAD against master
-import difflib, pickle, multiprocessing, os
+import difflib, pickle, multiprocessing, os, json
 from typing import List, Tuple
+from urllib.request import Request
 from tinygrad.codegen.kernel import Kernel, OptOps
 from tinygrad.helpers import Context, ContextVar, colored, db_connection, VERSION, fetch, getenv, tqdm
 from tinygrad.ops import LazyOp
@@ -10,8 +11,10 @@ page_size = 100
 table_name = f"process_replay_{getenv('GITHUB_RUN_ID', 'HEAD')}_{VERSION}"
 
 def is_master():
-  return True
-  return os.getenv("GITHUB_REF") == "master"
+  # return True
+  r = os.getenv("GITHUB_REF") == "master"
+  print(r)
+  return r
 
 def process_replay(offset:int):
   ASSERT_PROCESS_REPLAY = (k:="[run_process_replay]") in os.getenv("COMMIT_MESSAGE", k) or k in os.getenv("PR_TITLE", k)
@@ -24,7 +27,6 @@ def process_replay(offset:int):
     ast, opts, applied_opts, name, compare_src, ctx = pickle.loads(row[0])
     if is_master(): params.append((ast, applied_opts))
     if ASSERT_PARAMS:
-      params.append((ast, applied_opts))
       """
       upstream_params = fetch()
       try: assert any(t == (ast, applied_opts) for t in upstream_params)
@@ -62,6 +64,7 @@ def process_replay(offset:int):
   cur.close()
 
 if __name__ == "__main__":
+  """
   conn = db_connection()
   cur = conn.cursor()
   row_count = cur.execute(f"select count(*) from '{table_name}'").fetchone()[0]
@@ -69,3 +72,16 @@ if __name__ == "__main__":
   cur.close()
   offsets = range(0, row_count, page_size)
   with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool: list(tqdm(pool.imap(process_replay, offsets), total=len(offsets)))
+  """
+  run_id = "9925440225"
+  req = Request(f"https://api.github.com/repos/{getenv('GITHUB_REPOSITORY', '')}/actions/runs/{run_id}/artifacts?name=process_replay_gpu.pkl")
+  req.add_header("Authorization", f"Bearer {getenv('GITHUB_TOKEN', '')}")
+  req.add_header("Accept", "application/vnd.github+json")
+  req.add_header("X-GitHub-Api-Version", "2022-11-28")
+  download_url = json.load(open(fetch(req), "r"))["artifacts"][0]["archive_download_url"]
+  req = Request(download_url)
+  req.add_header("Authorization", f"Bearer token {getenv('GITHUB_TOKEN', '')}")
+  req.add_header("Accept", "application/vnd.github+json")
+  req.add_header("X-GitHub-Api-Version", "2022-11-28")
+  val = fetch(req)
+  print(val)
