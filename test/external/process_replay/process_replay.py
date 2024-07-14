@@ -48,3 +48,10 @@ if __name__ == "__main__":
   cur.close()
   offsets = range(0, row_count, page_size)
   with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool: list(tqdm(pool.imap(process_replay, offsets), total=len(offsets)))
+  if getenv("PREPARE_UPLOAD"):
+    conn = db_connection()
+    cur = conn.cursor()
+    drop_tables = cur.execute(f"SELECT 'DROP TABLE IF EXISTS ' || quote(name) || ';' FROM sqlite_master WHERE type = 'table' and name != '{table_name}';").fetchall()
+    cur.executescript("\n".join([s[0] for s in drop_tables]))
+    conn.commit()
+    cur.close()
