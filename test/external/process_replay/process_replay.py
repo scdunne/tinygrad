@@ -9,11 +9,20 @@ table_name = f"process_replay_{getenv('GITHUB_RUN_ID', 'HEAD')}_{VERSION}"
 
 def process_replay(offset:int):
   ASSERT_PROCESS_REPLAY = (k:="[run_process_replay]") in os.getenv("COMMIT_MESSAGE", k) or k in os.getenv("PR_TITLE", k)
+  ASSERT_PARAMS = (k:="[assert_params]") in os.getenv("COMMIT_MESSAGE", k) or k in os.getenv("PR_TITLE", k)
   conn = db_connection()
   cur = conn.cursor()
   cur.execute(f"SELECT val FROM '{table_name}' LIMIT ? OFFSET ?", (page_size, offset))
   for row in cur.fetchall():
     ast, opts, applied_opts, name, compare_src, ctx = pickle.loads(row[0])
+    if ASSERT_PARAMS:
+      upstream_params = pickle.load(open("/tmp/process_replay.pkl", "rb"))
+      try: assert any(t == (ast, applied_opts) for t in upstream_params)
+      except AssertionError as e:
+        print("AST OR APPLIED_OPTS CHANGED")
+        print(ast)
+        print(applied_opts)
+        raise e
     with Context(**{k:v for k,v in ctx.items() if k in ContextVar._cache}):
       # try linearize
       try:

@@ -317,8 +317,8 @@ jobs:
     - name: Upload process replay artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: cache-metal.db
-        path: ~/Library/Caches/tinygrad/cache.db
+        name: process_replay_metal.pkl
+        path: /tmp/process_replay.pkl
 
 #  testwebgl:
 #    name: WebGL Tests
@@ -511,8 +511,8 @@ jobs:
       - name: Upload process replay artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cache-${{ matrix.backend }}.db
-          path: ~/.cache/tinygrad
+          name: process_replay_${{ matrix.backend }}.pkl
+          path: /tmp/process_replay.pkl
 
   #testunicorn:
   #  name: ARM64 unicorn Test
