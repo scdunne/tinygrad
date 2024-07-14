@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 # compare kernels created by HEAD against master
 import difflib, pickle, multiprocessing, os
-from tinygrad.codegen.kernel import Kernel
-from tinygrad.helpers import Context, ContextVar, colored, db_connection, VERSION, getenv, tqdm
+from typing import List, Tuple
+from tinygrad.codegen.kernel import Kernel, OptOps
+from tinygrad.helpers import Context, ContextVar, colored, db_connection, VERSION, fetch, getenv, tqdm
+from tinygrad.ops import LazyOp
 
 page_size = 100
 table_name = f"process_replay_{getenv('GITHUB_RUN_ID', 'HEAD')}_{VERSION}"
+
+def is_master():
+  return True
+  return os.getenv("GITHUB_REF") == "master"
 
 def process_replay(offset:int):
   ASSERT_PROCESS_REPLAY = (k:="[run_process_replay]") in os.getenv("COMMIT_MESSAGE", k) or k in os.getenv("PR_TITLE", k)
@@ -13,16 +19,21 @@ def process_replay(offset:int):
   conn = db_connection()
   cur = conn.cursor()
   cur.execute(f"SELECT val FROM '{table_name}' LIMIT ? OFFSET ?", (page_size, offset))
+  params: List[Tuple[LazyOp, List[OptOps]]] = []
   for row in cur.fetchall():
     ast, opts, applied_opts, name, compare_src, ctx = pickle.loads(row[0])
+    if is_master(): params.append((ast, applied_opts))
     if ASSERT_PARAMS:
-      upstream_params = pickle.load(open("/tmp/process_replay.pkl", "rb"))
+      params.append((ast, applied_opts))
+      """
+      upstream_params = fetch()
       try: assert any(t == (ast, applied_opts) for t in upstream_params)
       except AssertionError as e:
         print("AST OR APPLIED_OPTS CHANGED")
         print(ast)
         print(applied_opts)
         raise e
+      """
     with Context(**{k:v for k,v in ctx.items() if k in ContextVar._cache}):
       # try linearize
       try:
@@ -46,6 +57,7 @@ def process_replay(offset:int):
         for line in diff:
           print(colored(line, "red" if line.startswith("-") else "green" if line.startswith("+") else None))
         if ASSERT_PROCESS_REPLAY: raise e
+  if is_master(): pickle.dump(params, open("/tmp/process_replay.pkl", "wb"))
   conn.commit()
   cur.close()
 
@@ -57,10 +69,3 @@ if __name__ == "__main__":
   cur.close()
   offsets = range(0, row_count, page_size)
   with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool: list(tqdm(pool.imap(process_replay, offsets), total=len(offsets)))
-  if getenv("PREPARE_PROCESS_REPLAY_UPLOAD"):
-    conn = db_connection()
-    cur = conn.cursor()
-    drop_tables = cur.execute(f"SELECT 'DROP TABLE IF EXISTS ' || quote(name) || ';' FROM sqlite_master WHERE type = 'table' and name != '{table_name}';").fetchall()
-    cur.executescript("\n".join([s[0] for s in drop_tables]))
-    conn.commit()
-    cur.close()
