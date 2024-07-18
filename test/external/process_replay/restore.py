@@ -1,7 +1,6 @@
 import pickle
 from tinygrad.codegen.kernel import Kernel
 from tinygrad.device import Device
-from tinygrad.engine.graph import print_tree
 from tinygrad.helpers import Context, db_connection, VERSION, ContextVar, tqdm
 
 conn = db_connection()
@@ -26,6 +25,6 @@ if __name__ == "__main__":
         try: Device[k.opts.device].compiler.compile(src)
         except Exception as e:
           print("FAILED TO COMPILE")
-          for op in ast: print_tree(op)
+          print(ast)
           print(applied_opts)
           raise e
