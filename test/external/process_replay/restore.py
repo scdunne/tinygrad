@@ -5,7 +5,7 @@ from tinygrad.engine.graph import print_tree
 from tinygrad.helpers import Context, db_connection, VERSION, ContextVar, tqdm
 
 conn = db_connection()
-sha = "03c3b14cc23930eb86d55331f13b2d7135a8e836"
+sha = "9995277064"
 table_name = f"process_replay_{sha}_{VERSION}"
 
 page_size = 100
