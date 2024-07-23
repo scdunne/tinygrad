@@ -212,6 +212,16 @@ def _get_isolated_children(r:LazyBuffer, group:Set[LazyBuffer], realizes:Dict[La
     return set.union(set(), *iter(_get_recursive_parents(x.base, False) for x in buf.srcs))
   return set([tr for tr in group if tr is not r and len(_get_recursive_parents(tr)) == 1])
 
+def _is_assign_ok(group:Set[LazyBuffer], realizes:Dict[LazyBuffer, None], assign_targets:Dict[LazyBuffer, LazyBuffer]) -> bool:
+  if any(x.op is MetaOps.ASSIGN for x in group):
+    parents = deque(group)
+    while parents:
+      if (p:=parents.pop().base).realized or p in realizes:
+        if p in assign_targets and assign_targets[p] not in group: return False
+        continue
+      parents.extend(p.srcs)
+  return True
+
 def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
   """create a graph for realizing the outputs"""
   # start by just realizing the buffers passed in
@@ -232,27 +242,16 @@ def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
   reduce_for_op: Dict[LazyBuffer, LazyBuffer] = {}
   for r in allbufs:
     if r.op not in ReduceOps or r in realizes: continue
-
     group: Set[LazyBuffer] = set()
     _recursive_group(r, r.st, r, children, realizes, reduce_for_op, group, cache=set())
     # recreate the group if there are any isolated children
     if r in group:
       realizes[r] = None
-      if len(group) > 1: group = _get_isolated_children(r, group, realizes)
+      group = _get_isolated_children(r, group, realizes)
     if len(group) > 1:
       descendants: Set[LazyBuffer] = set()
       for tr in group: _recursive_group(tr, tr.st, tr, children, realizes, reduce_for_op, descendants, cache=set())
-      # TODO: i can do better
-      if any(x.op is MetaOps.ASSIGN for x in descendants):
-        parents = deque({r, *descendants, *group})
-        while parents:
-          if (p:=parents.pop().base).realized or p in realizes:
-            if p in assign_targets and assign_targets[p] not in group:
-              descendants.clear()
-              break
-            continue
-          parents.extend(p.srcs)
-      group.update(descendants)
+      if _is_assign_ok({r, *group, *descendants}, realizes, assign_targets): group.update(descendants)
     reduce_for_op.update((tr, r) for tr in group)
 
   # fuse double reduces with no other child
