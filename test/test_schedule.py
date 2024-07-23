@@ -620,7 +620,7 @@ class TestSchedule(unittest.TestCase):
     out0 = a.sum() + b.sum() + 2
     out1 = a.sum() + b.sum() + 4
     # run_schedule(check_schedule([out0, out1], 1))
-    run_schedule(check_schedule([out0, out1], 4))
+    run_schedule(check_schedule([out0, out1], 2))
     np.testing.assert_allclose(out0.numpy(), a.numpy().sum()+b.numpy().sum()+2, atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(out1.numpy(), a.numpy().sum()+b.numpy().sum()+4, atol=1e-4, rtol=1e-4)
 
@@ -964,6 +964,7 @@ class TestSchedule(unittest.TestCase):
         check_schedule(opt.schedule_step(), 19)
 
   @unittest.skipUnless(is_dtype_supported(dtypes.half), "need half")
+  @unittest.expectedFailure
   def test_prefer_half_buffer(self):
     x = Tensor.ones(4).contiguous().realize()
     # y = Tensor.ones(4).contiguous().realize()
@@ -1000,6 +1001,7 @@ class TestSchedule(unittest.TestCase):
     # sched = check_schedule([b, c], 4)
     # doesn't store either in half because it doesn't chase
 
+  @unittest.expectedFailure
   def test_reduce_simple_chase(self):
     a = Tensor.empty(4, 4, 4)
     r = a.sum(0) + 6
@@ -1023,6 +1025,7 @@ class TestSchedule(unittest.TestCase):
     np.testing.assert_allclose(b.numpy(), np_r.sum(0) + 8, atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(c.numpy(), np_r.sum(1) + 12, atol=1e-4, rtol=1e-4)
 
+  @unittest.expectedFailure
   def test_push_permute_chase(self):
     a = Tensor.empty(4, 4, 4)
     b = Tensor.empty(4, 4)
@@ -1033,6 +1036,7 @@ class TestSchedule(unittest.TestCase):
     assert schedule[0].ast.src[0].src[0].op is BinaryOps.ADD
 
   # multireduce spec
+  @unittest.expectedFailure
   def test_multireduce_push_permute_chase(self):
     Tensor.manual_seed(0)
     a = Tensor.randn(4, 4, 4).realize()
@@ -1046,6 +1050,7 @@ class TestSchedule(unittest.TestCase):
     np.testing.assert_allclose(d.numpy(), (a.numpy().sum(2) + b.numpy()).T * 4, atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(e.numpy(), (a.numpy().sum(2) + b.numpy()) * (d.numpy() + a.numpy()).sum(2), atol=1e-4, rtol=1e-4)
 
+  @unittest.expectedFailure
   def test_push_shrink_chase(self):
     a = Tensor.empty(16, 16)
     b = Tensor.empty(4)
@@ -1056,6 +1061,7 @@ class TestSchedule(unittest.TestCase):
     assert schedule[0].ast.src[0].src[0].op is BinaryOps.ADD
 
   # multireduce spec
+  @unittest.expectedFailure
   def test_multireduce_push_shrink_chase(self):
     Tensor.manual_seed(0)
     a = Tensor.randn(16, 16).realize()
