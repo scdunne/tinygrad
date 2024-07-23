@@ -192,7 +192,7 @@ def _recursive_group(tr:LazyBuffer, st:ShapeTracker, r:LazyBuffer, children:Defa
   """recursively search the LazyBuffer for groupable children, realize the LazyBuffer if a child can't group"""
   if (tr, st) in cache: return
   cache.add((tr, st))
-  if tr in realizes:
+  if tr in realizes and tr is not r:
     # can only fuse contiguous
     # max one reduceop per kernel
     if not st.contiguous or st.size != r.st.size or tr in reduce_for_op: group.add(r)
@@ -210,10 +210,6 @@ def _get_isolated_children(r:LazyBuffer, group:Set[LazyBuffer], realizes:Dict[La
     if buf in realizes and not first: return set((buf,))
     return set.union(set(), *iter(_get_recursive_parents(x.base, False) for x in buf.srcs if x.base.realized is None))
   return set([tr for tr in group if tr is not r and len(_get_recursive_parents(tr)) == 1])
-
-# TODO
-def _recurse_realized_descendants(group:Set[LazyBuffer]) -> Set[LazyBuffer]:
-  return set()
 
 def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
   """create a graph for realizing the outputs"""
@@ -239,27 +235,14 @@ def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
     group: Set[LazyBuffer] = set()
     _recursive_group(r, r.st, r, children, realizes, reduce_for_op, group, cache=set())
     # recreate the group if there are any isolated children
-    if (realize_r:=r in group): group = _get_isolated_children(r, group, realizes)
-    if len(group) > 1: group.update(_recurse_realized_descendants(group))
+    if r in group:
+      realizes[r] = None
+      group = _get_isolated_children(r, group, realizes)
+    if len(group) > 1:
+      descendants: Set[LazyBuffer] = set()
+      for tr in group: _recursive_group(tr, tr.st, tr, children, realizes, reduce_for_op, descendants, cache=set())
+      group.update(descendants)
     reduce_for_op.update((tr, r) for tr in group)
-    if realize_r:
-      tr = r
-      if all(tr not in reduce_for_op for tr in group):
-        # can chase this down to contiguous children
-        st = tr.st
-        while len(children[tr]) == 1:
-          tr_next = next(iter(children[tr]))
-          st_childs = dedup(s for s in tr_next.srcs if s.base is tr)
-          if len(st_childs) > 1: break
-          if st.size != st_childs[0].st.size: break
-          st = st + st_childs[0].st
-          if not st.contiguous or tr_next.op in ReduceOps: break
-          tr = tr_next
-        # don't cast to higher size before store (tr cannot be realized if forced_realize)
-        if tr.op is UnaryOps.CAST and tr.arg.itemsize > tr.srcs[0].dtype.itemsize:
-          tr = tr.srcs[0].base
-        reduce_for_op[tr] = r
-      realizes[tr] = None
 
   # fuse double reduces with no other child
   if FUSE_CONV_BW:

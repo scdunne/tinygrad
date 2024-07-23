@@ -29,7 +29,7 @@ def check_schedule(t:Union[Tensor, List[Tensor]], allowed:int, to_prerealize:Opt
   sched = create_schedule(flatten([r.lazydata.lbs for r in t]), seen)
   if filter_sink: sched = [s for s in sched if s.ast.op is MetaOps.KERNEL]
   if len(sched) != allowed: print(f"SCHEDULE ISSUE, expecting {allowed} got {len(sched)}")
-  if len(sched) != allowed or DEBUG >= 3:
+  if len(sched) != allowed and DEBUG >= 3:
     for i, s in enumerate(sched):
       print("kernel", i+1)
       print(s.ast)
@@ -1096,7 +1096,7 @@ class TestSchedule(unittest.TestCase):
     c = a.sum() + 2
     d = (a.sum() - b.sum()) * 4
     # run_schedule(check_schedule([c, d], 1))
-    run_schedule(check_schedule([c, d], 3))
+    run_schedule(check_schedule([c, d], 2))
     np.testing.assert_allclose(c.numpy(), a.numpy().sum()+2, atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(d.numpy(), (a.numpy().sum() - b.numpy().sum()) * 4, atol=1e-4, rtol=1e-4)
 
