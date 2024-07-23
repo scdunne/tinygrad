@@ -29,7 +29,7 @@ def check_schedule(t:Union[Tensor, List[Tensor]], allowed:int, to_prerealize:Opt
   sched = create_schedule(flatten([r.lazydata.lbs for r in t]), seen)
   if filter_sink: sched = [s for s in sched if s.ast.op is MetaOps.KERNEL]
   if len(sched) != allowed: print(f"SCHEDULE ISSUE, expecting {allowed} got {len(sched)}")
-  if len(sched) != allowed and DEBUG >= 3:
+  if len(sched) != allowed or DEBUG >= 3:
     for i, s in enumerate(sched):
       print("kernel", i+1)
       print(s.ast)
@@ -649,7 +649,7 @@ class TestSchedule(unittest.TestCase):
     out1 = b.max() + out0*2
     out2 = a.sum() + out1
     # run_schedule(check_schedule([out0, out1, out2], 1))
-    run_schedule(check_schedule([out0, out1, out2], 4))
+    run_schedule(check_schedule([out0, out1, out2], 2))
     np.testing.assert_allclose(out0.numpy(), out0_np:=a.numpy().sum()+4, atol=1e-4, rtol=1e-6)
     np.testing.assert_allclose(out1.numpy(), out1_np:=b.numpy().max() + out0_np*2, atol=1e-4, rtol=1e-6)
     np.testing.assert_allclose(out2.numpy(), a.numpy().sum() + out1_np, atol=1e-4, rtol=1e-6)
@@ -1140,7 +1140,7 @@ class TestSchedule(unittest.TestCase):
     e = c * d
     f = (b - d).sum() - e
     # run_schedule(check_schedule([c, d, e, f], 1))
-    run_schedule(check_schedule([c, d, e, f], 3))
+    run_schedule(check_schedule([c, d, e, f], 2))
     np.testing.assert_allclose(c.numpy(), c_np:=a.numpy().sum()+2, atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(d.numpy(), d_np:=a.numpy().sum()*2, atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(e.numpy(), e_np:=c_np*d_np, atol=1e-4, rtol=1e-4)
