@@ -207,8 +207,9 @@ def _recursive_group(tr:LazyBuffer, st:ShapeTracker, r:LazyBuffer, children:Defa
 def _get_isolated_children(r:LazyBuffer, group:Set[LazyBuffer], realizes:Dict[LazyBuffer, None]) -> Set[LazyBuffer]:
   @functools.lru_cache(None)
   def _get_recursive_parents(buf:LazyBuffer, first=True) -> Set[LazyBuffer]:
+    if buf.realized is not None or buf.op is MetaOps.CONST: return set()
     if buf in realizes and not first: return set((buf,))
-    return set.union(set(), *iter(_get_recursive_parents(x.base, False) for x in buf.srcs if x.base.realized is None))
+    return set.union(set(), *iter(_get_recursive_parents(x.base, False) for x in buf.srcs))
   return set([tr for tr in group if tr is not r and len(_get_recursive_parents(tr)) == 1])
 
 def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
@@ -237,10 +238,20 @@ def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
     # recreate the group if there are any isolated children
     if r in group:
       realizes[r] = None
-      group = _get_isolated_children(r, group, realizes)
+      if len(group) > 1: group = _get_isolated_children(r, group, realizes)
     if len(group) > 1:
       descendants: Set[LazyBuffer] = set()
       for tr in group: _recursive_group(tr, tr.st, tr, children, realizes, reduce_for_op, descendants, cache=set())
+      # TODO: i can do better
+      if any(x.op is MetaOps.ASSIGN for x in descendants):
+        parents = deque({r, *descendants, *group})
+        while parents:
+          if (p:=parents.pop().base).realized or p in realizes:
+            if p in assign_targets and assign_targets[p] not in group:
+              descendants.clear()
+              break
+            continue
+          parents.extend(p.srcs)
       group.update(descendants)
     reduce_for_op.update((tr, r) for tr in group)
 
