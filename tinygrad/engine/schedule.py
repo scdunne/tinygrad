@@ -1,4 +1,4 @@
-import sys, pickle, atexit
+import sys, pickle, atexit, functools
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Tuple, List, Dict, Optional, Set, DefaultDict, Union, cast, get_args
@@ -204,6 +204,17 @@ def _recursive_group(tr:LazyBuffer, st:ShapeTracker, r:LazyBuffer, children:Defa
     if len(st_childs:=dedup(s for s in tr_next.srcs if s.base == tr)) > 1: return group.add(r)
     _recursive_group(tr_next, st+st_childs[0].st, r, children, realizes, reduce_for_op, group, cache)
 
+def _get_isolated_children(r:LazyBuffer, group:Set[LazyBuffer], realizes:Dict[LazyBuffer, None]) -> Set[LazyBuffer]:
+  @functools.lru_cache(None)
+  def _get_recursive_parents(buf:LazyBuffer, first=True) -> Set[LazyBuffer]:
+    if buf in realizes and not first: return set((buf,))
+    return set.union(set(), *iter(_get_recursive_parents(x.base, False) for x in buf.srcs if x.base.realized is None))
+  return set([tr for tr in group if tr is not r and len(_get_recursive_parents(tr)) == 1])
+
+# TODO
+def _recurse_realized_descendants(group:Set[LazyBuffer]) -> Set[LazyBuffer]:
+  return set()
+
 def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
   """create a graph for realizing the outputs"""
   # start by just realizing the buffers passed in
@@ -227,45 +238,13 @@ def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
 
     group: Set[LazyBuffer] = set()
     _recursive_group(r, r.st, r, children, realizes, reduce_for_op, group, cache=set())
-    # max one reduceop per kernel
-    can_chase = all(tr not in reduce_for_op for tr in group)
-    # TODO: forced_realize exists because the scheduler is incapable of checking for self-contained DAGs
-    forced_realize = r in group
-    if not forced_realize and len(group) > 1:
-      # create a multi output kernel if the LazyBuffers can cleanly group
-      cache: Set[LazyBuffer] = set()
-      rc_parents, rc_children = deque(group), deque(group)
-      while rc_parents:
-        if (p:=rc_parents.pop()) in cache: continue
-        cache.add(p)
-        # max one reduceop per kernel
-        if p.op in ReduceOps:
-          forced_realize = True
-          break
-        rc_parents.extend(x.base for x in p.srcs if x.base.realized is None and x.base is not r)
-      # search descendants of the reduceop that can cleanly group
-      cache.clear()
-      realized_descendants: Set[LazyBuffer] = set()
-      while rc_children and not forced_realize:
-        if (c:=rc_children.pop()) in cache: continue
-        cache.add(c)
-        if c.op in ReduceOps or not c.st.contiguous or c.st.size != r.st.size or c in reduce_for_op:
-          realized_descendants.clear()
-          break
-        if c in realizes and c not in group: realized_descendants.add(c)
-        rc_children.extend(x for x in children[c] if x.realized is None and x.device == r.device)
-      group.update(realized_descendants)
-    # can only fuse assign if no other assign_target is used in the kernel
-    if not forced_realize and any(x.op is MetaOps.ASSIGN for x in group):
-      parents = deque((r, *group))
-      while parents and not forced_realize:
-        if (p:=parents.pop().base).realized or p in realizes:
-          if p in assign_targets and assign_targets[p] not in group: forced_realize, can_chase = True, False
-          continue
-        parents.extend(p.srcs)
-    if forced_realize:
+    # recreate the group if there are any isolated children
+    if (realize_r:=r in group): group = _get_isolated_children(r, group, realizes)
+    if len(group) > 1: group.update(_recurse_realized_descendants(group))
+    reduce_for_op.update((tr, r) for tr in group)
+    if realize_r:
       tr = r
-      if can_chase:
+      if all(tr not in reduce_for_op for tr in group):
         # can chase this down to contiguous children
         st = tr.st
         while len(children[tr]) == 1:
@@ -280,8 +259,7 @@ def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
         if tr.op is UnaryOps.CAST and tr.arg.itemsize > tr.srcs[0].dtype.itemsize:
           tr = tr.srcs[0].base
         reduce_for_op[tr] = r
-      if not FUSE_AS_ONE_KERNEL: realizes[tr] = None
-    else: reduce_for_op.update((tr, r) for tr in group)
+      realizes[tr] = None
 
   # fuse double reduces with no other child
   if FUSE_CONV_BW:
