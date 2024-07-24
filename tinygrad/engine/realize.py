@@ -60,6 +60,12 @@ def get_kernel(renderer:Renderer, ast:LazyOp) -> Kernel:
                   raise RuntimeError(f"mismatch of {diff_count}/{b.numel()} items with type {b.dtype}, max {(b-bufs[0]).abs().max().item()}")
   if logkerns is not None: logkerns.writelines([f"{(k.ast, k.applied_opts)}\n"])
   if DEBUG >= 5: print((k.ast, k.applied_opts)) # print here to show final applied_opts for all kernels instead of just in beam_search
+  try: Device[Device.DEFAULT].compiler.compile_cached(k.to_program().src)
+  except Exception as e:
+    print("COMPILE FAILED")
+    print(k.ast)
+    print(k.applied_opts)
+    raise e
   return k
 
 # **************** Runners ****************
