@@ -209,7 +209,7 @@ class TestSchedule(unittest.TestCase):
 
   def test_fold_conv_batchnorm_optim(self):
     # this is too high
-    for optim, cnt in [(nn.optim.Adam, 19), (nn.optim.SGD, 17)]:
+    for optim, cnt in [(nn.optim.Adam, 18), (nn.optim.SGD, 16)]:
       with self.subTest(optim=optim.__name__):
         with Tensor.train():
           img = Tensor.ones(1,3,4,4)
@@ -256,7 +256,7 @@ class TestSchedule(unittest.TestCase):
         fw = bn(x).contiguous_backward().relu().contiguous()
         fw.sum().backward()
         # TODO: this is too many
-        check_schedule([x.grad, bn.weight.grad, bn.bias.grad, fw], 10)
+        check_schedule([x.grad, bn.weight.grad, bn.bias.grad, fw], 9)
 
   def test_fold_conv_relu(self):
     c1 = nn.Conv2d(3,16,3)
