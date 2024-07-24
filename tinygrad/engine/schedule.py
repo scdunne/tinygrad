@@ -208,7 +208,7 @@ def _get_isolated_children(r:LazyBuffer, group:Set[LazyBuffer], realizes:Dict[La
   @functools.lru_cache(None)
   def _get_recursive_parents(buf:LazyBuffer, first=True) -> Set[LazyBuffer]:
     if buf.realized is not None or buf.op is MetaOps.CONST: return set()
-    if (buf in realizes or buf is r) and not first: return set((buf,))
+    if not first and (buf in realizes or buf is r): return set((buf,))
     return set.union(set(), *iter(_get_recursive_parents(x.base, False) for x in buf.srcs))
   return set([tr for tr in group if tr is r or len(_get_recursive_parents(tr)) == 1])
 
@@ -251,8 +251,7 @@ def _graph_schedule(outs:List[LazyBuffer], seen:Set[LazyBuffer]):
       for tr in group:
         if tr is not r: _recursive_group(tr, tr.st, tr, children, realizes, reduce_for_op, descendants, cache=set())
       descendants = _get_isolated_children(r, descendants, realizes)
-      if _is_assign_ok({r, *group, *descendants}, realizes, assign_targets): group.update(descendants)
-      else: group = {r}
+      group = group.union(descendants) if _is_assign_ok({r, *group, *descendants}, realizes, assign_targets) else {r}
     reduce_for_op.update((tr, r) for tr in group)
     if r in group: realizes[r] = None
 
